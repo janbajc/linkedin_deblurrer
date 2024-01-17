@@ -1,0 +1,15 @@
+{
+    "manifest_version": 3,
+    "name": "Linkedin deblurer",
+    "version": "1.0",
+    "permissions": [
+        "activeTab"
+    ],
+    "content_scripts": [
+        {
+            "matches": ["https://*.linkedin.com/*"],
+            "js": ["content.js"],
+			"run_at": "document_end"
+        }
+    ]
+}
