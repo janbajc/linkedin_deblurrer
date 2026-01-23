@@ -3,12 +3,20 @@
 - **Deblur Hidden Content:**
 - Uncover blurred or obscured content on LinkedIn profiles and pages, enabling you to view details typically reserved for logged-in users.
 
-- ## Installation
+## Installation
+
+### Chrome
 
 1. Download the extension folder.
 2. Open Chrome and navigate to `chrome://extensions/`.
 3. Enable "Developer mode" in the top right.
 4. Click "Load unpacked" and select the extension folder.
+
+### Firefox
+
+1. Download the extension folder.
+2. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`.
+3. Click "Load Temporary Add-on" and select the extension folder.
 
 ## Disclaimer
 
