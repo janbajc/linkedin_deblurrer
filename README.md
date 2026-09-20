@@ -1,7 +1,6 @@
 ## Features
 
-- **Deblur Hidden Content:**
-- Uncover blurred or obscured content on LinkedIn profiles and pages, enabling you to view details typically reserved for logged-in users.
+- **Deblur Hidden Content:** Uncover blurred or obscured content on LinkedIn profiles and pages, enabling you to view details that are otherwise hidden behind LinkedIn's blur effect.
 
 ## Installation
 
