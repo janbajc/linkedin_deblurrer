@@ -1,26 +1,13 @@
-// LinkedIn Deblurrer — content script
-// Fixes (v1.1):
-//  1. removeViewFullExperience used a hardcoded, long Tailwind class string
-//     that no longer matches current LinkedIn DOM. It had no null guard, so
-//     any failure threw an uncaught TypeError that halted the entire script
-//     and prevented the remaining functions from running.
-//  2. replaceStarsWithName called getElementsByClassName with a regex
-//     string, which is never valid for a CSS selector. It also did not
-//     guard against missing img or divClass[0].
-//  3. removeBlurContentClass set div.className = '' which wiped ALL classes
-//     (layout, spacing, etc). Now only the specific blur-related classes
-//     are removed.
-//  4. MutationObserver was re-running removeBlurContentClass on every DOM
-//     mutation (very expensive). Now it only re-runs deblurAll() with a
-//     50ms debounce.
+// LinkedIn Deblurrer — content script (v1.2)
+// Removes the full-screen sign-in overlay ("View X's full experience") so
+// the experience list is visible on public LinkedIn profiles without login.
 //
-// Root cause for "does not work at all" (Issue #1, Firefox + Chrome):
-//   The original script called removeViewFullExperience() which ran
-//   document.querySelector('...') and immediately accessed .classList.remove
-//   on the result with no null guard. When LinkedIn's DOM did not match
-//   the exact class string (very common — Tailwind classes change often),
-//   the script threw an uncaught TypeError before any other code could run.
-//   The page was left completely un-deblurred.
+// What it does:
+//  1. deblurAll()          — strips blur-related CSS classes and inline filters
+//  2. hideSigninOverlay()  — removes the blurred-overlay container, the
+//                            "View full experience" CTA card, and the modal
+//  3. replaceStarsWithName() — replaces masked org names with logo-URL names
+//  4. MutationObserver — re-runs on DOM changes with 50 ms debounce
 
 (function () {
   'use strict';
@@ -61,26 +48,88 @@
     }
   }
 
-  function removeViewFullExperience() {
-    var selector =
-      'div[class*="absolute"][class*="top-1\\/2"][class*="left-0"][class*="right-0"]' +
-      ', div[class*="absolute"][class*="m-auto"][class*="translate"][class*="container"]' +
-      ', [class*="container-lined"][class*="text-center"][class*="max-w"]';
-    var divs = document.querySelectorAll(selector);
-    for (var i = 0; i < divs.length; i++) {
-      var d = divs[i];
-      if (d) {
-        ['absolute', 'fixed', 'top-1/2', 'top-0', 'left-0', 'right-0',
-         'm-auto', '-translate-y-1/2', 'translate-x-1/2',
-         'z-50', 'z-40', 'z-30', 'pointer-events-none'].forEach(function (c) {
-          d.classList.remove(c);
-        });
+  function hideSigninOverlay() {
+    // 1. Remove the full-screen blurred-overlay wrapper
+    //    Structure:
+    //    <div class="blurred-overlay w-screen h-screen relative !w-full !h-full
+    //              experience-education__list">
+    //      <ul class="visible-list"> ... experience cards ... </ul>
+    //      <div class="absolute top-1/2 ..."> CTA card + modal </div>
+    //    </div>
+    //
+    //    We remove the wrapper class + full-screen sizing, but KEEP the inner
+    //    <ul> so the experience list stays visible.
+    var overlays = document.querySelectorAll('.blurred-overlay');
+    for (var i = 0; i < overlays.length; i++) {
+      var o = overlays[i];
+      o.classList.remove('blurred-overlay');
+      ['w-screen', 'h-screen', '!w-full', '!h-full'].forEach(function (c) {
+        o.classList.remove(c);
+      });
+      o.style.filter = '';
+      o.style.backdropFilter = '';
+      // Stop any inline pointer-events block
+      o.style.pointerEvents = '';
+    }
+
+    // 2. Remove the "View X's full experience" CTA card
+    //    Structure:
+    //    <div class="absolute top-1/2 left-0 right-0 m-auto -translate-y-1/2
+    //              container-raised container-lined ...">
+    //      <h2 class="blurred_overlay__title">View X's full experience</h2>
+    //      <h3 class="blurred_overlay__sub_title">See their title, tenure...</h3>
+    //      ...
+    //    </div>
+    var ctas = document.querySelectorAll('.blurred_overlay__title');
+    for (var k = 0; k < ctas.length; k++) {
+      var cta = ctas[k];
+      var wrapper = null;
+      // Primary: find the .absolute ancestor of the CTA card
+      var node = cta.parentElement;
+      while (node && node.tagName === 'DIV') {
+        if (node.classList.contains('absolute') && node.classList.contains('top-1/2')) {
+          wrapper = node;
+          break;
+        }
+        node = node.parentElement;
       }
+      // Fallback: any ancestor containing both title and sub_title
+      if (!wrapper) {
+        node = cta.parentElement;
+        while (node && node.tagName === 'DIV') {
+          if (node.querySelector('.blurred_overlay__sub_title')) {
+            wrapper = node;
+            break;
+          }
+          node = node.parentElement;
+        }
+      }
+      if (wrapper) wrapper.remove();
+    }
+
+    // 3. Remove the sign-in modal (id="blurred-overlay-sign-in-modal")
+    var modal = document.getElementById('blurred-overlay-sign-in-modal');
+    if (modal) modal.remove();
+
+    // 4. Remove any remaining sign-in modal containers
+    var modals = document.querySelectorAll('.sign-in-modal');
+    for (var m = 0; m < modals.length; m++) {
+      modals[m].remove();
+    }
+
+    // 5. Remove the bottom "View X's full profile" hidden summary CTA
+    var hidden = document.querySelector('[data-impression-id*="guest_hidden_summary"]');
+    if (hidden) hidden.remove();
+
+    // 6. Remove the contextual sign-in modal (profile photo hover modal)
+    var ctxModal = document.getElementById('public_profile_logo_contextual-sign-in-info_modal');
+    if (ctxModal) {
+      ctxModal.classList.remove('visible');
     }
   }
 
   function replaceStarsWithName() {
-    var lists = document.querySelectorAll('.blurred-list');
+    var lists = document.querySelectorAll('[class*="blurred-list"]');
     for (var i = 0; i < lists.length; i++) {
       var items = lists[i].getElementsByTagName('li');
       for (var k = 0; k < items.length; k++) {
@@ -89,8 +138,8 @@
         if (!img) continue;
 
         var url = img.getAttribute('data-delayed-url') ||
-                 img.getAttribute('data-src') ||
-                 img.src || '';
+                  img.getAttribute('data-src') ||
+                  img.src || '';
         if (!url) continue;
 
         var lastSlash = url.lastIndexOf('/');
@@ -110,15 +159,19 @@
     }
   }
 
-  deblurAll();
-  removeViewFullExperience();
-  replaceStarsWithName();
+  function run() {
+    deblurAll();
+    hideSigninOverlay();
+    replaceStarsWithName();
+  }
+
+  run();
 
   var timer = null;
   var observer = new MutationObserver(function () {
     if (timer) clearTimeout(timer);
     timer = setTimeout(function () {
-      deblurAll();
+      run();
     }, 50);
   });
   observer.observe(document.body, { childList: true, subtree: true });
